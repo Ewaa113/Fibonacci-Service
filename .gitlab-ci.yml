@@ -1,0 +1,118 @@
+# populate if using GitLab
+stages:
+  - build
+  - test
+  - docker-build
+  - deploy
+
+variables:
+  DOCKER_IMAGE: fibonacci-app
+
+build:
+  stage: build
+  script:
+    - cd python
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+
+test:
+  stage: test
+  script:
+    - cd python
+    - pytest
+
+docker-build:
+  stage: docker-build
+  script:
+    - cd python
+    - docker build -t $DOCKER_IMAGE .
+
+deploy_heroku:
+  stage: deploy
+  only:
+    - main
+  script:
+    - curl https://cli-assets.heroku.com/install.sh | sh
+    - heroku container:login
+    - heroku create $HEROKU_APP_NAME
+    - heroku container:push web -a $HEROKU_APP_NAME
+    - heroku container:release web -a $HEROKU_APP_NAME
+  environment:
+    name: heroku
+  when: manual
+
+deploy_azure:
+  stage: deploy
+  only:
+    - main
+  script:
+    - echo "$AZURE_PUBLISH_PROFILE" > azure_publish_profile
+    - az webapp deploy --name $AZURE_APP_NAME --resource-group $AZURE_RESOURCE_GROUP --src-path python/Dockerfile
+  environment:
+    name: azure
+  when: manual
+
+deploy_aws:
+  stage: deploy
+  only:
+    - main
+  script:
+    - pip install awsebcli
+    - eb init -p docker $AWS_EB_APP_NAME --region $AWS_REGION
+    - eb create $AWS_EB_ENV_NAME
+    - eb deploy
+  environment:
+    name: aws
+  when: manual
+
+deploy_gcp:
+  stage: deploy
+  only:
+    - main
+  script:
+    - echo "$GCP_SA_KEY" > gcp-key.json
+    - gcloud auth activate-service-account --key-file=gcp-key.json
+    - gcloud config set project $GCP_PROJECT
+    - gcloud builds submit --tag gcr.io/$GCP_PROJECT/$DOCKER_IMAGE python
+    - gcloud run deploy $DOCKER_IMAGE --image gcr.io/$GCP_PROJECT/$DOCKER_IMAGE --platform managed --region us-central1 --allow-unauthenticated
+  environment:
+    name: gcp
+  when: manual
+
+# How the GitLab CI/CD Pipeline Works
+# Pipeline Stages
+
+# The pipeline is divided into these stages: build, test, docker-build, and deploy.
+# Build Stage
+
+# Installs Python dependencies inside the python directory.
+# Test Stage
+
+# Runs  unit tests using pytest to ensure  code works as expected.
+# Docker Build Stage
+
+# Builds a Docker image for the application using the Dockerfile in the python directory.
+# Deploy Stage
+
+# There are four deploy jobs: deploy_heroku, deploy_azure, deploy_aws, and deploy_gcp.
+# Each deploy job is set to run only on the main branch and is marked as manual (you must trigger it from the GitLab UI).
+# Each job deploys the Docker image to a different cloud provider (Heroku, Azure, AWS Elastic Beanstalk, or Google Cloud Run).
+
+# How to Use This Pipeline
+# Set Up CI/CD Variables
+
+# In the GitLab project, go to Settings > CI/CD > Variables.
+# Add the required secrets for each cloud provider:
+# HEROKU_APP_NAME, AZURE_APP_NAME, AZURE_RESOURCE_GROUP, AZURE_PUBLISH_PROFILE
+# AWS_EB_APP_NAME, AWS_EB_ENV_NAME, AWS_REGION
+# GCP_PROJECT, GCP_SA_KEY
+# Push to Main Branch
+
+# Push the code to the main branch to trigger the pipeline.
+# Monitor the Pipeline
+
+# Go to CI/CD > Pipelines in GitLab to watch the pipeline progress.
+# Manual Deployment
+
+# After the build, test, and docker-build stages succeed, you’ll see manual deploy jobs for each cloud provider.
+# Click the "Play" button next to the desired deploy job (Heroku, Azure, AWS, or GCP) to trigger deployment to that environment.

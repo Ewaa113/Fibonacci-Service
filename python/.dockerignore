@@ -1,0 +1,67 @@
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+*.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# VS Code settings
+.vscode/
+.settings/
+
+# Test and coverage files
+*.cover
+*.coverage
+.coverage.*
+.cache/
+.pytest_cache/
+htmlcov/
+nosetests.xml
+coverage.xml
+*.log
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Node modules (if present)
+node_modules/
+
+# Docker files
+Dockerfile*
+.dockerignore
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Archive files
+*.tar
+*.zip
+
+# CI/CD configs
+.circleci/
+.github/
+.gitlab-ci.yml
+
+# Markdown and documentation
+*.md
+
+# Miscellaneous
+*.swp
+*.swo
+*.bak
+*.tmp

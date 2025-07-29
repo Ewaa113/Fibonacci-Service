@@ -1,0 +1,127 @@
+# populate if using GitHub Actions
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd python
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: |
+          cd python
+          pytest
+
+      - name: Build Docker image
+        run: |
+          cd python
+          docker build -t fibonacci-app .
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        provider: [heroku, azure, aws, gcp]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Heroku
+        if: matrix.provider == 'heroku'
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          #requires heroku CLI and setup)
+          curl https://cli-assets.heroku.com/install.sh | sh
+          heroku container:login
+          heroku create fibonacci-app-${{ github.run_id }}
+          heroku container:push web -a fibonacci-app-${{ github.run_id }}
+          heroku container:release web -a fibonacci-app-${{ github.run_id }}
+
+      - name: Deploy to Azure Web App
+        if: matrix.provider == 'azure'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_APP_NAME }}
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
+          images: fibonacci-app
+
+      - name: Deploy to AWS Elastic Beanstalk
+        if: matrix.provider == 'aws'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          # Example AWS EB deployment (requires AWS CLI and setup)
+          pip install awsebcli
+          eb init -p docker fibonacci-app --region $AWS_REGION
+          eb create fibonacci-env-${{ github.run_id }}
+          eb deploy
+
+      - name: Deploy to Google Cloud Run
+        if: matrix.provider == 'gcp'
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GCP_SA_KEY" > gcp-key.json
+          gcloud auth activate-service-account --key-file=gcp-key.json
+          gcloud config set project $GCP_PROJECT
+          gcloud builds submit --tag gcr.io/$GCP_PROJECT/fibonacci-app
+          gcloud run deploy fibonacci-app --image gcr.io/$GCP_PROJECT/fibonacci-app --platform managed --region us-central1 --allow-unauthenticated
+
+
+# Instructions for deploying using .github/workflows/build.yml (GitHub Actions):
+
+#  Pipeline Overview
+# - The workflow is triggered on pushes and pull requests to the main branch.
+# - It consists of two jobs: build-and-test, and deploy.
+
+#  Build and Test Job
+# - Checks out the code.
+# - Sets up Python 3.11.
+# - Installs dependencies from requirements.txt in the python directory.
+# - Runs unit tests using pytest.
+# - Builds a Docker image the application.
+
+#  Deploy Job
+# - Runs after build-and-test completes successfully.
+
+#  How to Use This Workflow
+# - Push the code to the main branch or open a pull request targeting main.
+# - The workflow will automatically run the build-and-test job.
+# - After successful tests, the deploy job will run (if configured).
+# - You can monitor workflow runs and logs under the "Actions" tab in the GitHub repository.
+
+#  Setting Up Secrets
+# - Go to the repository's Settings > Secrets and variables > Actions.
+# - Add the required secrets for the cloud providers (e.g., HEROKU_API_KEY, AZURE_PUBLISH_PROFILE, AWS credentials, GCP_SA_KEY, etc.).
+# - Reference these secrets in the deploy job steps.
+
+#  Manual or Automatic Deployment
+# - By default, deployment is automatic after a successful build and test.
+# - You can add 'if' conditions or use 'workflow_dispatch' for manual deployment if desired.
+
+#  Customizing for Multiple Clouds
+# - Add deployment steps for each cloud provider (Heroku, Azure, AWS, GCP) in the deploy job.
+# - Use the secrets you configured for authentication.

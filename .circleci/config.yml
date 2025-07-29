@@ -1,0 +1,113 @@
+# populate if using CircleCI
+version: 2.1
+
+executors:
+  python-executor:
+    docker:
+      - image: cimg/python:3.11
+
+jobs:
+  build-and-test:
+    executor: python-executor
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            cd python
+            pip install --upgrade pip
+            pip install -r requirements.txt
+      - run:
+          name: Run unit tests
+          command: |
+            cd python
+            pytest
+      - run:
+          name: Build Docker image
+          command: |
+            cd python
+            docker build -t fibonacci-app .
+
+  deploy-heroku:
+    docker:
+      - image: cimg/python:3.11
+    steps:
+      - checkout
+      - run:
+          name: Deploy to Heroku
+          command: |
+            curl https://cli-assets.heroku.com/install.sh | sh
+            heroku container:login
+            heroku create fibonacci-app-${CIRCLE_WORKFLOW_ID}
+            heroku container:push web -a fibonacci-app-${CIRCLE_WORKFLOW_ID}
+            heroku container:release web -a fibonacci-app-${CIRCLE_WORKFLOW_ID}
+    environment:
+      HEROKU_API_KEY: $HEROKU_API_KEY
+
+  deploy-azure:
+    docker:
+      - image: cimg/python:3.11
+    steps:
+      - checkout
+      - run:
+          name: Deploy to Azure Web App
+          command: |
+            echo "$AZURE_PUBLISH_PROFILE" > azure_publish_profile
+            az webapp deploy --name $AZURE_APP_NAME --resource-group $AZURE_RESOURCE_GROUP --src-path python/Dockerfile
+
+  deploy-aws:
+    docker:
+      - image: cimg/python:3.11
+    steps:
+      - checkout
+      - run:
+          name: Deploy to AWS Elastic Beanstalk
+          command: |
+            pip install awsebcli
+            eb init -p docker fibonacci-app --region $AWS_REGION
+            eb create fibonacci-env-${CIRCLE_WORKFLOW_ID}
+            eb deploy
+
+  deploy-gcp:
+    docker:
+      - image: cimg/python:3.11
+    steps:
+      - checkout
+      - run:
+          name: Deploy to Google Cloud Run
+          command: |
+            echo "$GCP_SA_KEY" > gcp-key.json
+            gcloud auth activate-service-account --key-file=gcp-key.json
+            gcloud config set project $GCP_PROJECT
+            gcloud builds submit --tag gcr.io/$GCP_PROJECT/fibonacci-app
+            gcloud run deploy fibonacci-app --image gcr.io/$GCP_PROJECT/fibonacci-app --platform managed --region us-central1 --allow-unauthenticated
+
+workflows:
+  version: 2
+  build-test-and-deploy:
+    jobs:
+      - build-and-test
+      - deploy-heroku:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
+      - deploy-azure:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
+      - deploy-aws:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
+      - deploy-gcp:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
